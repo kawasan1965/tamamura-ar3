@@ -15,6 +15,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
         body, html { width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: white; overflow: hidden; }
         
+        /* ビデオは初期状態では完全に非表示、クリア時に表示 */
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; display: none; }
         canvas { display: none; } 
         #flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; z-index: 2; pointer-events: none; }
@@ -37,18 +38,12 @@
         #hp-bar { width: 100%; height: 100%; background: var(--danger); transition: width 0.1s; }
         #hp-text { color: white; font-size: 12px; font-weight: bold; margin-top: 5px; text-shadow: 1px 1px 3px black; }
         
-        .message-board { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 5px 15px; }
+        .message-board { width: 100%; display: flex; justify-content: center; padding: 5px 15px; }
         #instruction { 
             background: rgba(0,0,0,0.85); padding: 10px 15px; border-radius: 20px; 
             font-size: 14px; font-weight: bold; text-align: center; width: 100%; max-width: 340px;
             border: 2px solid var(--accent); backdrop-filter: blur(4px); color: white;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-        }
-        /* 【NEW】速度アップ率をカッコよく表示するラベルのスタイル */
-        #speed-badge {
-            background: #ef4444; color: white; padding: 4px 10px; border-radius: 8px;
-            font-size: 12px; font-weight: bold; box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
-            display: none; /* 初期（通常速度）は非表示、1キー以上で出現 */
         }
         
         .controls { 
@@ -68,8 +63,10 @@
         #shoot-btn:active { transform: translateY(3px); box-shadow: 0 1px #1e293b; }
         #shoot-btn.ready { background: linear-gradient(135deg, #f59e0b, #d97706) !important; color: white !important; box-shadow: 0 4px #92400e !important; }
 
+        /* オーバーレイ共通 */
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; padding: 30px; text-align: center; color: white; }
         
+        /* クリア時はビデオの上に透過させて重ねる（z-index: 9999） */
         #resBoard { 
             background: rgba(15, 23, 42, 0.5) !important; 
             backdrop-filter: blur(2px); 
@@ -81,6 +78,7 @@
         .action-btn { background: #10b981; color: white; border: none; padding: 15px 40px; font-size: 20px; font-weight: bold; border-radius: 30px; cursor: pointer; width: 80%; max-width: 280px; box-shadow: 0 4px #059669; }
         .action-btn:active { transform: translateY(2px); box-shadow: 0 2px #059669; }
 
+        /* 黄色い点線のスキャン照準枠 */
         .qr-target-box { 
             width: 200px; height: 200px; 
             border: 4px dashed var(--accent); 
@@ -125,7 +123,6 @@
         </div>
 
         <div class="message-board">
-            <div id="speed-badge">速度: +0%</div>
             <div id="instruction">光るボタンを選択しよう！</div>
         </div>
 
@@ -157,13 +154,6 @@
         let gameHasStarted = false; 
         let isScanningQR = false; 
 
-        // === 🛠️【NEW】難易度ループシステム用の変数管理 ===
-        // ブラウザを閉じない限り、クリア回数を引き継いで蓄積します
-        let clearCount = parseInt(localStorage.getItem('tamamura_clear_count') || '0');
-        const MAX_CLEAR = 7;
-        let baseBpmIntervalTime = 125; // 音楽・テンポの基準間隔(125ms)
-        let currentBpmIntervalTime = baseBpmIntervalTime;
-
         window.onload = function() {
             try {
                 let savedName = sessionStorage.getItem('current_battle_name');
@@ -174,37 +164,12 @@
                     document.getElementById('start-loc-info').innerHTML = `${savedName}に${savedMonster || 'モンスター'}が出現！<br>これより迎撃作戦を開始します。`;
                 }
                 if (savedMonster) document.getElementById('active-monster').innerText = savedMonster;
-                
-                // 現在の難易度に応じた速度設定をあらかじめ計算
-                calculateSpeed();
             } catch (e) {
                 console.log("データ復元スキップ");
             }
         };
 
-        // === 🛠️【NEW】難易度とスピードアップ率の計算ロジック ===
-        function calculateSpeed() {
-            // 7回を上限としてキャップをかける
-            if (clearCount > MAX_CLEAR) clearCount = MAX_CLEAR;
-
-            let speedPercent = clearCount * 20; // 0%, 20%, 40%, 60%, 80%, 100%, 120%, 140%
-            let speedMultiplier = 1.0 + (speedPercent / 100); // 1.0倍 〜 2.4倍
-
-            // テンポの「間隔（ミリ秒）」を倍率で割ることで、処理速度を早くする
-            currentBpmIntervalTime = baseBpmIntervalTime / speedMultiplier;
-
-            // 画面に「+20% SPEED UP!」などの文字を刻む
-            const badge = document.getElementById('speed-badge');
-            if (badge) {
-                if (speedPercent > 0) {
-                    badge.style.display = 'block';
-                    badge.innerText = `暴走難易度: +${speedPercent}% 速度UP! (${speedMultiplier.toFixed(1)}倍速)`;
-                } else {
-                    badge.style.display = 'none';
-                }
-            }
-        }
-
+        // ★大改造1：ゲーム開始時はカメラを起動「しない」
         function clickToStartGame() {
             if (gameHasStarted) return;
             gameHasStarted = true;
@@ -215,6 +180,9 @@
             if (audioCtx && audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
+
+            // 【削除】ここにあったgetUserMedia（カメラ起動）を完全に撤去しました。
+            // ゲーム中は通常のゲーム背景（濃い紺色）のままプレイします。
 
             startBpmMusic();
             nextTurn();
@@ -249,17 +217,7 @@
                 targetEl.classList.add('highlight'); 
             }
             
-            updateInstructionText();
-        }
-
-        function updateInstructionText() {
-            if (isMessageLocked) return;
-            const textEl = document.getElementById('instruction');
-            if (selected === target) {
-                textEl.innerText = "準備完了！ 攻撃ボタンDを狙え！";
-            } else {
-                textEl.innerText = `選択ボタン【 ${target} 】を押そう！`;
-            }
+            document.getElementById('instruction').innerText = `選択ボタン【 ${target} 】を押そう！`;
         }
 
         function tapAbc(l) {
@@ -277,7 +235,7 @@
                 isMessageLocked = false; 
                 const dBtn = document.getElementById('shoot-btn');
                 if(dBtn) dBtn.classList.add('ready'); 
-                updateInstructionText();
+                document.getElementById('instruction').innerText = "準備完了！ 攻撃ボタンDを狙え！";
                 playTone(440, 'triangle', 0.1, 0.2); 
             } else {
                 isMessageLocked = true; 
@@ -310,9 +268,6 @@
             triggerHitEffects();
 
             if(hp <= 0) {
-                // === 🛠️【NEW】モンスターを倒したらクリア回数をインクリメントし難易度を保存 ===
-                clearCount++;
-                localStorage.setItem('tamamura_clear_count', clearCount);
                 end(true, "LEVEL 1 CLEAR!");
             } else {
                 nextTurn();
@@ -339,7 +294,7 @@
 
                 const pop = document.createElement('div');
                 pop.className = 'damage-pop';
-                pop.innerText = '-20';
+                pop.innerText = '-10';
                 pop.style.left = (rect.left + rect.width / 2 - 20) + 'px';
                 pop.style.top = (rect.top - 20) + 'px';
                 document.body.appendChild(pop);
@@ -350,15 +305,166 @@
             playTone(90, 'square', 0.2, 0.4);
         }
 
+        // ★大改造2：ゲームをクリアした瞬間に、初めてカメラを「遅延起動」させる
         function end(success, msg) {
             clearInterval(timerInterval);
-            if (bgmInterval) clearTimeout(bgmInterval); // タイマー停止
+            clearInterval(bgmInterval);
             
             if(success) {
+                // 戦闘UIを非表示にする
                 document.getElementById('gameplay-ui').style.display = 'none';
             }
 
             document.getElementById('resBoard').style.display = 'flex';
+            document.getElementById('resTitle').innerText = success ? "LEVEL 1 CLEAR!" : "GAME OVER";
             
-            // 画面タイトルの表示変更
-            let speedPercent = (clearCount - 1)
+            if(success) {
+                document.getElementById('qr-box-area').style.display = 'flex';
+                document.getElementById('resBody').innerHTML = 
+                    `<span style="color:#facc15;font-size:24px;font-weight:bold;">+ ${score} PT 獲得！</span><br><br>` +
+                    `<span style="color:#34d399; font-weight:bold;">【カメラ＆QRスキャン起動中】</span><br>上の黄色い枠の中に、現地にある「レベル2専用QRコード」をかざしてください。`;
+                
+                document.getElementById('res-action-btn').innerText = "キャンセルして戻る";
+
+                let total = parseInt(localStorage.getItem('tamamura_points_demo') || '0');
+                localStorage.setItem('tamamura_points_demo', total + score);
+                playFanfare();
+
+                // 📸 川島様大絶賛の設計：クリアした瞬間に初めてスマホの背面カメラを起動！
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+                        .then(stream => { 
+                            const videoEl = document.getElementById('video');
+                            videoEl.srcObject = stream;
+                            videoEl.style.display = 'block'; // 非表示だったビデオタグを表に出す
+                            
+                            // カメラが無事にキャッチできたら、QRスキャンループを開始
+                            isScanningQR = true;
+                            requestAnimationFrame(scanQRCodeLoop);
+                        })
+                        .catch(() => { 
+                            document.getElementById('resBody').innerHTML += "<br><span style='color:red;'>（カメラの起動に失敗しました）</span>";
+                        });
+                }
+            } else {
+                document.getElementById('qr-box-area').style.display = 'none';
+                document.getElementById('resBody').innerText = msg;
+                document.getElementById('res-action-btn').innerText = "マップに戻る";
+                playTone(100, 'sawtooth', 0.8, 0.5);
+            }
+        }
+
+        function scanQRCodeLoop() {
+            if (!isScanningQR) return;
+
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('hidden-canvas');
+            
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                const ctx = canvas.getContext('2d');
+                canvas.width = 300;
+                canvas.height = 300;
+                
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+
+                if (code) {
+                    isScanningQR = false; 
+                    playTone(523.25, 'sine', 0.1, 0.3); // 成功音
+                    
+                    // カメラのストリームを安全に停止
+                    try {
+                        const stream = video.srcObject;
+                        const tracks = stream.getTracks();
+                        tracks.forEach(track => track.stop());
+                    } catch(e){}
+
+                    setTimeout(() => {
+                        window.location.href = code.data;
+                    }, 200);
+                    return;
+                }
+            }
+            requestAnimationFrame(scanQRCodeLoop);
+        }
+
+        function back() { 
+            isScanningQR = false;
+            // キャンセル時はカメラを止める
+            try {
+                const video = document.getElementById('video');
+                const stream = video.srcObject;
+                const tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+            } catch(e){}
+            window.location.href = 'index.html'; 
+        }
+
+        function initAudio() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            } catch(e) { console.log("Audio Error"); }
+        }
+
+        function playTone(freq, type, duration, volume) {
+            if(!audioCtx) return;
+            try {
+                let osc = audioCtx.createOscillator(), gainNode = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gainNode); gainNode.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + duration);
+            } catch(e){}
+        }
+
+        function startBpmMusic() {
+            const track1 = [
+                329.63, 329.63, 0,      329.63, 0,      261.63, 329.63, 0, 
+                392.00, 0,      0,      0,      196.00, 0,      0,      0,
+                261.63, 0,      0,      196.00, 0,      0,      164.81, 0,
+                220.00, 0,      246.94, 0,      233.08, 220.00, 0,      0
+            ];
+            const track2 = [
+                392.00, 392.00, 0,      392.00, 0,      329.63, 392.00, 0,
+                523.25, 0,      0,      0,      392.00, 0,      0,      0,
+                523.25, 0,      0,      392.00, 0,      0,      329.63, 0,
+                440.00, 0,      493.88, 0,      466.16, 440.00, 0,      0
+            ];
+            const bass = [
+                130.81, 0,      130.81, 0,      130.81, 0,      130.81, 0,
+                196.00, 0,      196.00, 0,      196.00, 196.00, 98.00,  0,
+                130.81, 0,      98.00,  0,      82.41,  0,      65.41,  0,
+                110.00, 0,      123.47, 0,      116.54, 110.00, 0,      0
+            ];
+            let index = 0;
+
+            bgmInterval = setInterval(() => {
+                if (!gameHasStarted) return;
+
+                if (track1[index] > 0) playTone(track1[index], 'square', 0.1, 0.03);
+                if (track2[index] > 0) playTone(track2[index], 'square', 0.08, 0.02);
+                if (bass[index] > 0) playTone(bass[index], 'triangle', 0.12, 0.06);
+                
+                if (!isMessageLocked) {
+                    document.getElementById('instruction').innerText = selected === target ? "準備完了！ 攻撃ボタンDを狙え！" : `選択ボタン【 ${target} 】を押そう！`;
+                }
+
+                index = (index + 1) % track1.length;
+            }, 125); 
+        }
+
+        function playFanfare() {
+            setTimeout(() => playTone(523.25, 'square', 0.15, 0.1), 0);   
+            setTimeout(() => playTone(587.33, 'square', 0.15, 0.1), 150); 
+            setTimeout(() => playTone(659.25, 'square', 0.15, 0.1), 300); 
+            setTimeout(() => playTone(783.99, 'square', 0.4, 0.1), 450);  
+        }
+    </script>
+</body>
+</html>
