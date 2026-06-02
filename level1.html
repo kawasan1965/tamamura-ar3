@@ -1,6 +1,147 @@
-<script>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>たまむらふぃーるど - レベル1バトル</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        :root {
+            --primary: #005088;
+            --accent: #facc15;
+            --dark: #0f172a;
+            --danger: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+        body, html { width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: white; overflow: hidden; }
+        
+        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; display: none; }
+        canvas { display: none; } 
+        #flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; z-index: 2; pointer-events: none; }
+        
+        .main-wrapper {
+            position: relative; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: space-between; z-index: 5;
+        }
+
+        .hud { width: 100%; display: flex; justify-content: space-between; padding: 15px; }
+        .hud-card { background: rgba(15, 23, 42, 0.85); padding: 8px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(4px); }
+        #timer { color: #f87171; font-size: 14px; }
+        #score { color: #34d399; font-size: 14px; }
+        
+        .arena { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; min-height: 0; }
+        #active-monster { font-size: 28vw; max-width: 140px; filter: drop-shadow(0 8px 15px rgba(0,0,0,0.6)); transition: all 0.2s ease; animation: float 3s ease-in-out infinite; line-height: 1; }
+        @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
+        
+        .hp-frame { width: 160px; height: 12px; background: rgba(255,255,255,0.3); border-radius: 6px; margin-top: 15px; overflow: hidden; border: 1px solid black; }
+        #hp-bar { width: 100%; height: 100%; background: var(--danger); transition: width 0.1s; }
+        #hp-text { color: white; font-size: 12px; font-weight: bold; margin-top: 5px; text-shadow: 1px 1px 3px black; }
+        
+        .message-board { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 5px 15px; }
+        #instruction { 
+            background: rgba(0,0,0,0.85); padding: 10px 15px; border-radius: 20px; 
+            font-size: 14px; font-weight: bold; text-align: center; width: 100%; max-width: 340px;
+            border: 2px solid var(--accent); backdrop-filter: blur(4px); color: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        
+        .controls { 
+            width: 100%; background: rgba(15, 23, 42, 0.95); padding: 15px 15px 35px 15px; 
+            border-radius: 24px 24px 0 0; display: flex; flex-direction: column; gap: 12px; 
+            border-top: 2px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px);
+        }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .abc-btn { background: #334155; color: #94a3b8; border: 1px solid #475569; padding: 16px 0; font-size: 22px; font-weight: bold; border-radius: 12px; cursor: pointer; box-shadow: 0 4px #1e293b; transition: all 0.1s; }
+        .abc-btn:active { transform: translateY(2px); box-shadow: 0 2px #1e293b; }
+        
+        .abc-btn.selected { background: #2563eb !important; color: white !important; box-shadow: 0 4px #1d4ed8 !important; }
+        .abc-btn.highlight { background: var(--accent) !important; color: var(--dark) !important; box-shadow: 0 4px #ca8a04, 0 0 15px var(--accent) !important; animation: pulse 0.8s infinite alternate !important; }
+        @keyframes pulse { 0% { transform: scale(0.98); opacity: 0.9; } 100% { transform: scale(1.04); opacity: 1; } }
+        
+        #shoot-btn { width: 100%; background: linear-gradient(135deg, #475569, #334155); color: #94a3b8; font-size: 22px; font-weight: bold; padding: 14px 0; border-radius: 12px; border: none; box-shadow: 0 4px #1e293b; cursor: pointer; transition: all 0.1s; }
+        #shoot-btn:active { transform: translateY(3px); box-shadow: 0 1px #1e293b; }
+        #shoot-btn.ready { background: linear-gradient(135deg, #f59e0b, #d97706) !important; color: white !important; box-shadow: 0 4px #92400e !important; }
+
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; padding: 30px; text-align: center; color: white; }
+        
+        #resBoard { 
+            background: rgba(15, 23, 42, 0.5) !important; 
+            backdrop-filter: blur(2px); 
+            z-index: 9999 !important; 
+        } 
+
+        .res-title { font-size: 32px; color: var(--accent); margin-bottom: 20px; font-weight: bold; font-family: serif; }
+        .res-body { font-size: 16px; margin-bottom: 30px; line-height: 1.6; color: #cbd5e1; }
+        .action-btn { background: #10b981; color: white; border: none; padding: 15px 40px; font-size: 20px; font-weight: bold; border-radius: 30px; cursor: pointer; width: 80%; max-width: 280px; box-shadow: 0 4px #059669; }
+        .action-btn:active { transform: translateY(2px); box-shadow: 0 2px #059669; }
+
+        .qr-target-box { 
+            width: 200px; height: 200px; 
+            border: 4px dashed var(--accent); 
+            border-radius: 16px; 
+            margin-bottom: 25px; 
+            background: transparent; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.6);
+            position: relative;
+        }
+
+        .sparkle { position: absolute; font-size: 40px; animation: burst 0.4s ease-out forwards; pointer-events: none; z-index: 20; text-shadow: 0 0 8px #ff5722; }
+        @keyframes burst { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+        .shake { animation: shakeAnim 0.15s linear; }
+        @keyframes shakeAnim { 0%, 100% { transform: translate(0,0); } 25% { transform: translate(-6px,0); } 75% { transform: translate(6px,0); } }
+        .damage-pop { position: absolute; color: #ffeb3b; font-size: 36px; font-weight: bold; text-shadow: 2px 2px 0 #000; animation: floatUp 0.5s ease-out forwards; z-index: 7; }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity:1; } 100% { transform: translateY(-50px) scale(1.2); opacity:0; } }
+    </style>
+</head>
+<body>
+
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="hidden-canvas"></canvas> 
+    <div id="flash"></div>
+
+    <div id="startBoard" class="overlay">
+        <div class="res-title">ターゲット接近！</div>
+        <div class="res-body" id="start-loc-info">玉村町エリアにモンスターが連続出現！<br><br><span style="color:#ef4444; font-size:18px; font-weight:bold;">⚠️30秒間の無限討伐作戦！</span><br>設置ボタンを素早く叩き、何匹倒せるか挑戦だ！</div>
+        <button class="action-btn" onclick="clickToStartGame()">バトル開始！</button>
+    </div>
+
+    <div class="main-wrapper" id="gameplay-ui">
+        <div class="hud">
+            <div class="hud-card">タイム: <span id="timer">30</span> 秒</div>
+            <div class="hud-card" id="loc-name">玉村町エリア</div>
+            <div class="hud-card">獲得: <span id="score">0</span> PT</div>
+        </div>
+
+        <div class="arena">
+            <div id="active-monster">🦖</div>
+            <div class="hp-frame"><div id="hp-bar"></div></div>
+            <div id="hp-text">HP: 100 / 100</div>
+        </div>
+
+        <div class="message-board">
+            <div id="instruction">光るボタンを選択しよう！</div>
+        </div>
+
+        <div class="controls">
+            <div class="grid-3">
+                <button id="btn-a" class="abc-btn" onclick="tapAbc('A')">A</button>
+                <button id="btn-b" class="abc-btn" onclick="tapAbc('B')">B</button>
+                <button id="btn-c" class="abc-btn" onclick="tapAbc('C')">C</button>
+            </div>
+            <button id="shoot-btn" onclick="attack()">攻撃ボタンD</button>
+        </div>
+    </div>
+
+    <div id="resBoard" class="overlay" style="display: none;">
+        <div class="res-title" id="resTitle">⚔️ 作戦時間終了！ ⚔️</div>
+        <div id="qr-box-area" class="qr-target-box" style="display:none;"></div>
+        <div class="res-body" id="resBody">結果</div>
+        <button class="action-btn" id="res-action-btn" onclick="back()">もう一度防衛戦に挑む</button>
+    </div>
+
+    <script>
         // === 🎮 基本ゲーム変数 ===
-        let maxHp = 100; // 1匹あたりのHP
+        let maxHp = 100; 
         let hp = maxHp;
         let score = 0;
         let time = 30;
@@ -10,9 +151,9 @@
         let isMessageLocked = false; 
         let gameHasStarted = false; 
         let isScanningQR = false; 
-        let monstersDefeated = 0; // 30秒間に倒したモンスターの数
+        let monstersDefeated = 0; 
 
-        // === 🦖 モンスターの絵文字＆二つ名図鑑（フル活用！） ===
+        // === 🦖 モンスターの絵文字＆二つ名図鑑（21種類フル活用） ===
         const monsterDic = [
             { emoji: '🦖', name: '古代竜タマムラサウルス' },
             { emoji: '👾', name: '宇宙インベーダー・ギル' },
@@ -44,26 +185,18 @@
                 let savedName = sessionStorage.getItem('current_battle_name') || '玉村町エリア';
                 document.getElementById('loc-name').innerText = savedName;
                 
-                // 最初のモンスターをランダムに決定
                 currentMonsterIndex = Math.floor(Math.random() * monsterDic.length);
                 setupMonster();
-                
-                document.getElementById('start-loc-info').innerHTML = 
-                    `${savedName}にモンスターが連続出現！<br><br>` +
-                    `<span style="color:#ef4444; font-size:18px; font-weight:bold;">⚠️30秒間の無限討伐作戦！</span><br>` +
-                    `設置ボタンを素早く叩き、何匹倒せるか挑戦だ！`;
             } catch (e) {}
         };
 
-        // モンスターのグラフィックと名前をセットする関数
         function setupMonster() {
             const currentMonster = monsterDic[currentMonsterIndex];
-            // 画面の絵文字を変更
             document.getElementById('active-monster').innerText = currentMonster.emoji;
-            // HPを全回復
             hp = maxHp;
             document.getElementById('hp-bar').style.width = `100%`;
             document.getElementById('hp-text').innerText = `HP: ${hp} / 100`;
+            updateInstructionText();
         }
 
         function clickToStartGame() {
@@ -77,12 +210,11 @@
             startBpmMusic();
             nextTurn();
 
-            // 30秒カウントダウンタイマー
             timerInterval = setInterval(() => {
                 time--;
                 document.getElementById('timer').innerText = time;
                 if(time <= 0) {
-                    end(true, "タイムアップ！作戦終了！");
+                    end(true, "タイムアップ！");
                 }
             }, 1000);
         }
@@ -114,6 +246,7 @@
         function updateInstructionText() {
             if (isMessageLocked) return;
             const textEl = document.getElementById('instruction');
+            if (!textEl) return;
             const currentMonster = monsterDic[currentMonsterIndex];
             
             if (selected === target) {
@@ -149,7 +282,6 @@
             }
         }
 
-        // 💥 攻撃ボタンDを押した時の処理
         function attack() {
             if (!gameHasStarted) return;
             if(selected !== target) {
@@ -159,9 +291,8 @@
                 return;
             }
             
-            // 攻撃が成功したら一撃につき25ダメージ（4回ヒットで撃破！）
             hp -= 25; 
-            score += 20; // 1回叩くごとに20ポイント獲得！
+            score += 20; 
 
             document.getElementById('score').innerText = score;
             document.getElementById('hp-bar').style.width = `${hp}%`;
@@ -169,153 +300,4 @@
             
             triggerHitEffects();
 
-            if(hp <= 0) {
-                // 🎉 モンスター撃破！
-                monstersDefeated++;
-                playFanfare();
-                
-                // 次のモンスターを現在とは別の種類からランダムに選ぶ
-                let nextIndex = currentMonsterIndex;
-                while (nextIndex === currentMonsterIndex) {
-                    nextIndex = Math.floor(Math.random() * monsterDic.length);
-                }
-                currentMonsterIndex = nextIndex;
-                
-                // 新しい絵文字モンスターをセット
-                setupMonster();
-            }
-            
-            // スピードは上げず、リズム（125ms）を一定に保ったまま次の指示へ移行
-            nextTurn();
-        }
-
-        function triggerHitEffects() {
-            document.getElementById('flash').style.opacity = '0.6';
-            setTimeout(() => document.getElementById('flash').style.opacity = '0', 50);
-            
-            const monsterEl = document.getElementById('active-monster');
-            if(monsterEl) {
-                monsterEl.classList.add('shake');
-                setTimeout(() => monsterEl.classList.remove('shake'), 150);
-                
-                const rect = monsterEl.getBoundingClientRect();
-                const spark = document.createElement('div');
-                spark.className = 'sparkle';
-                spark.innerText = '💥';
-                spark.style.left = (rect.left + rect.width / 2 - 20) + 'px';
-                spark.style.top = (rect.top + rect.height / 2 - 20) + 'px';
-                document.body.appendChild(spark);
-                setTimeout(() => spark.remove(), 400);
-
-                const pop = document.createElement('div');
-                pop.className = 'damage-pop';
-                pop.innerText = '+20PT';
-                pop.style.left = (rect.left + rect.width / 2 - 20) + 'px';
-                pop.style.top = (rect.top - 20) + 'px';
-                document.body.appendChild(pop);
-                setTimeout(() => pop.remove(), 500);
-            }
-            playTone(180, 'sawtooth', 0.15, 0.3);
-        }
-
-        // ⏱️ 30秒終了後のリザルト処理（何匹倒したかを盛大に表彰！）
-        function end(success, msg) {
-            clearInterval(timerInterval);
-            if (bgmInterval) clearInterval(bgmInterval); 
-            
-            document.getElementById('gameplay-ui').style.display = 'none';
-            document.getElementById('resBoard').style.display = 'flex';
-            
-            document.getElementById('resTitle').innerText = "⚔️ 作戦時間終了！ ⚔️";
-            document.getElementById('qr-box-area').style.display = 'flex';
-            
-            // 30秒間での最終戦績を誇らしげに表示！
-            document.getElementById('resBody').innerHTML = 
-                `<span style="color:#cbd5e1; font-size:16px;">作戦制限時間30秒が経過しました。</span><br><br>` +
-                `<span style="color:#34d399; font-size:24px; font-weight:bold;">🦖 撃破数: ${monstersDefeated} 匹</span><br>` +
-                `<span style="color:#facc15; font-size:28px; font-weight:bold;">🏆 獲得スコア: ${score} PT</span><br><br>` +
-                `<span style="color:#a7f3d0; font-size:14px; font-weight:bold;">素晴らしい戦績です！冒険者カードを進化させよう！</span><br><br>` +
-                `<span style="color:#94a3b8; font-size:12px;">現地にある「レベル2専用QRコード」をスキャンするか、「もう一度」ボタンで自己ベストに挑戦！</span>`;
-            
-            document.getElementById('res-action-btn').innerText = "もう一度防衛戦に挑む";
-
-            let total = parseInt(localStorage.getItem('tamamura_points_demo') || '0');
-            localStorage.setItem('tamamura_points_demo', total + score);
-
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
-                    .then(stream => { 
-                        const videoEl = document.getElementById('video');
-                        videoEl.srcObject = stream;
-                        videoEl.style.display = 'block';
-                        isScanningQR = true;
-                        requestAnimationFrame(scanQRCodeLoop);
-                    }).catch(() => {});
-            }
-        }
-
-        function scanQRCodeLoop() {
-            if (!isScanningQR) return;
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('hidden-canvas');
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                const ctx = canvas.getContext('2d');
-                canvas.width = 300; canvas.height = 300;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-                if (code) {
-                    isScanningQR = false; 
-                    playTone(523.25, 'sine', 0.1, 0.3);
-                    try {
-                        video.srcObject.getTracks().forEach(t => t.stop());
-                    } catch(e){}
-                    setTimeout(() => { window.location.href = code.data; }, 200);
-                    return;
-                }
-            }
-            requestAnimationFrame(scanQRCodeLoop);
-        }
-
-        function back() { 
-            isScanningQR = false;
-            try {
-                video.srcObject.getTracks().forEach(t => t.stop());
-            } catch(e){}
-            window.location.reload(); // 「もう一度」で完全な初期状態でリロード
-        }
-
-        function initAudio() {
-            try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
-        }
-
-        function playTone(freq, type, duration, volume) {
-            if(!audioCtx) return;
-            try {
-                let osc = audioCtx.createOscillator(), gainNode = audioCtx.createGain();
-                osc.type = type; osc.frequency.value = freq;
-                gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-                osc.connect(gainNode); gainNode.connect(audioCtx.destination);
-                osc.start(); osc.stop(audioCtx.currentTime + duration);
-            } catch(e){}
-        }
-
-        // 🎶 テンポ（BPM）を125msで常に「一定」に保ち、操作性を安定化させるエンジン
-        function startBpmMusic() {
-            const track1 = [329.63, 329.63, 0, 329.63, 0, 261.63, 329.63, 0, 392.00, 0, 0, 0, 196.00, 0, 0, 0];
-            let index = 0;
-            bgmInterval = setInterval(() => {
-                if (!gameHasStarted) return;
-                if (track1[index] > 0) playTone(track1[index], 'square', 0.08, 0.02);
-                index = (index + 1) % track1.length;
-                updateInstructionText();
-            }, 125); // 👈 スピードを可変にせず、一番心地よくカチカチ叩ける125ms固定に統一！
-        }
-
-        function playFanfare() {
-            setTimeout(() => playTone(523.25, 'square', 0.1, 0.05), 0);   
-            setTimeout(() => playTone(659.25, 'square', 0.1, 0.05), 100); 
-            setTimeout(() => playTone(783.99, 'square', 0.2, 0.05), 200);  
-        }
-    </script>
+            if(hp <= 0
