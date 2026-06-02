@@ -300,4 +300,150 @@
             
             triggerHitEffects();
 
-            if(hp <= 0
+            if(hp <= 0) {
+                monstersDefeated++;
+                playFanfare();
+                
+                let nextIndex = currentMonsterIndex;
+                while (nextIndex === currentMonsterIndex) {
+                    nextIndex = Math.floor(Math.random() * monsterDic.length);
+                }
+                currentMonsterIndex = nextIndex;
+                setupMonster();
+            }
+            
+            nextTurn();
+        }
+
+        function triggerHitEffects() {
+            document.getElementById('flash').style.opacity = '0.6';
+            setTimeout(() => document.getElementById('flash').style.opacity = '0', 50);
+            
+            const monsterEl = document.getElementById('active-monster');
+            if(monsterEl) {
+                monsterEl.classList.add('shake');
+                setTimeout(() => monsterEl.classList.remove('shake'), 150);
+                
+                const rect = monsterEl.getBoundingClientRect();
+                const spark = document.createElement('div');
+                spark.className = 'sparkle';
+                spark.innerText = '💥';
+                spark.style.left = (rect.left + rect.width / 2 - 20) + 'px';
+                spark.style.top = (rect.top + rect.height / 2 - 20) + 'px';
+                document.body.appendChild(spark);
+                setTimeout(() => spark.remove(), 400);
+
+                const pop = document.createElement('div');
+                pop.className = 'damage-pop';
+                pop.innerText = '+20PT';
+                pop.style.left = (rect.left + rect.width / 2 - 20) + 'px';
+                pop.style.top = (rect.top - 20) + 'px';
+                document.body.appendChild(pop);
+                setTimeout(() => pop.remove(), 500);
+            }
+            playTone(180, 'sawtooth', 0.15, 0.3);
+        }
+
+        function end(success, msg) {
+            clearInterval(timerInterval);
+            if (bgmInterval) clearInterval(bgmInterval); 
+            
+            document.getElementById('gameplay-ui').style.display = 'none';
+            document.getElementById('resBoard').style.display = 'flex';
+            
+            document.getElementById('resTitle').innerText = "⚔️ 作戦時間終了！ ⚔️";
+            document.getElementById('qr-box-area').style.display = 'flex';
+            
+            document.getElementById('resBody').innerHTML = 
+                `<span style="color:#cbd5e1; font-size:16px;">作戦制限時間30秒が経過しました。</span><br><br>` +
+                `<span style="color:#34d399; font-size:24px; font-weight:bold;">🦖 撃破数: ${monstersDefeated} 匹</span><br>` +
+                `<span style="color:#facc15; font-size:28px; font-weight:bold;">🏆 獲得スコア: ${score} PT</span><br><br>` +
+                `<span style="color:#a7f3d0; font-size:14px; font-weight:bold;">素晴らしい戦績です！冒険者カードを進化させよう！</span><br><br>` +
+                `<span style="color:#94a3b8; font-size:12px;">現地にある「レベル2専用QRコード」をスキャンするか、「もう一度」ボタンで自己ベストに挑戦！</span>`;
+            
+            document.getElementById('res-action-btn').innerText = "もう一度防衛戦に挑む";
+
+            let total = parseInt(localStorage.getItem('tamamura_points_demo') || '0');
+            localStorage.setItem('tamamura_points_demo', total + score);
+
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+                    .then(stream => { 
+                        const videoEl = document.getElementById('video');
+                        videoEl.srcObject = stream;
+                        videoEl.style.display = 'block';
+                        isScanningQR = true;
+                        requestAnimationFrame(scanQRCodeLoop);
+                    }).catch(() => {});
+            }
+        }
+
+        function scanQRCodeLoop() {
+            if (!isScanningQR) return;
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('hidden-canvas');
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                const ctx = canvas.getContext('2d');
+                canvas.width = 300; canvas.height = 300;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+                if (code) {
+                    isScanningQR = false; 
+                    playTone(523.25, 'sine', 0.1, 0.3);
+                    try {
+                        video.srcObject.getTracks().forEach(t => t.stop());
+                    } catch(e){}
+                    setTimeout(() => { window.location.href = code.data; }, 200);
+                    return;
+                }
+            }
+            requestAnimationFrame(scanQRCodeLoop);
+        }
+
+        function back() { 
+            isScanningQR = false;
+            try {
+                const video = document.getElementById('video');
+                if (video && video.srcObject) {
+                    video.srcObject.getTracks().forEach(t => t.stop());
+                }
+            } catch(e){}
+            window.location.reload(); 
+        }
+
+        function initAudio() {
+            try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+        }
+
+        function playTone(freq, type, duration, volume) {
+            if(!audioCtx) return;
+            try {
+                let osc = audioCtx.createOscillator(), gainNode = audioCtx.createGain();
+                osc.type = type; osc.frequency.value = freq;
+                gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gainNode); gainNode.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + duration);
+            } catch(e){}
+        }
+
+        function startBpmMusic() {
+            const track1 = [329.63, 329.63, 0, 329.63, 0, 261.63, 329.63, 0, 392.00, 0, 0, 0, 196.00, 0, 0, 0];
+            let index = 0;
+            bgmInterval = setInterval(() => {
+                if (!gameHasStarted) return;
+                if (track1[index] > 0) playTone(track1[index], 'square', 0.08, 0.02);
+                index = (index + 1) % track1.length;
+                updateInstructionText();
+            }, 125); 
+        }
+
+        function playFanfare() {
+            setTimeout(() => playTone(523.25, 'square', 0.1, 0.05), 0);   
+            setTimeout(() => playTone(659.25, 'square', 0.1, 0.05), 100); 
+            setTimeout(() => playTone(783.99, 'square', 0.2, 0.05), 200);  
+        }
+    </script>
+</body>
+</html>
