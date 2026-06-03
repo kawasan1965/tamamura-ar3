@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>たまむらふぃーるど - レベル1バトル</title>
+    <title>たまむらふぃーるど - 位置連動AR防衛戦</title>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
         :root {
@@ -15,9 +15,10 @@
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
         body, html { width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: white; overflow: hidden; }
         
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; display: none; }
-        canvas { display: none; } 
-        #flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; z-index: 2; pointer-events: none; }
+        #camera-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        #effect-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 2; pointer-events: none; }
+        video { display: none; } 
+        #flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; z-index: 3; pointer-events: none; }
         
         .main-wrapper {
             position: relative; width: 100%; height: 100%;
@@ -29,13 +30,13 @@
         #timer { color: #f87171; font-size: 14px; }
         #score { color: #34d399; font-size: 14px; }
         
-        .arena { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; min-height: 0; }
-        #active-monster { font-size: 28vw; max-width: 140px; filter: drop-shadow(0 8px 15px rgba(0,0,0,0.6)); transition: all 0.2s ease; animation: float 3s ease-in-out infinite; line-height: 1; }
+        .arena { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; min-height: 0; position: relative; }
+        #active-monster { font-size: 28vw; max-width: 140px; filter: drop-shadow(0 8px 15px rgba(0,0,0,0.6)); transition: all 0.2s ease; animation: float 3s ease-in-out infinite; line-height: 1; z-index: 6; }
         @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
         
-        .hp-frame { width: 160px; height: 12px; background: rgba(255,255,255,0.3); border-radius: 6px; margin-top: 15px; overflow: hidden; border: 1px solid black; }
+        .hp-frame { width: 160px; height: 12px; background: rgba(255,255,255,0.3); border-radius: 6px; margin-top: 15px; overflow: hidden; border: 1px solid black; z-index: 6; }
         #hp-bar { width: 100%; height: 100%; background: var(--danger); transition: width 0.1s; }
-        #hp-text { color: white; font-size: 12px; font-weight: bold; margin-top: 5px; text-shadow: 1px 1px 3px black; }
+        #hp-text { color: white; font-size: 12px; font-weight: bold; margin-top: 5px; text-shadow: 1px 1px 3px black; z-index: 6; }
         
         .message-board { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 5px 15px; }
         #instruction { 
@@ -65,29 +66,29 @@
         .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; padding: 20px; text-align: center; color: white; }
         
         #resBoard { 
-            background: rgba(15, 23, 42, 0.55) !important; 
+            background: rgba(15, 23, 42, 0.7) !important; 
             backdrop-filter: blur(4px); 
             z-index: 9999 !important; 
             justify-content: center;
-            gap: 15px;
+            gap: 12px;
         } 
 
         .res-title { font-size: 28px; color: var(--accent); margin-bottom: 5px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
         .res-body { font-size: 14px; line-height: 1.5; color: #cbd5e1; width: 100%; max-width: 400px; text-shadow: 1px 1px 3px rgba(0,0,0,0.9); }
         
-        /* 🛠️ ボタンの高さを小さく、文字を1行にまとめるよう調整 */
         .action-btn { 
             background: #10b981; color: white; border: none; 
             padding: 10px 30px; font-size: 18px; font-weight: bold; border-radius: 30px; 
             cursor: pointer; width: 90%; max-width: 320px; box-shadow: 0 4px #059669; 
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-            flex-shrink: 0;
+            flex-shrink: 0; transition: all 0.2s;
         }
         .action-btn:active { transform: translateY(2px); box-shadow: 0 2px #059669; }
+        /* ロック中ボタンの見た目 */
+        .action-btn:disabled { background: #475569 !important; box-shadow: 0 4px #1e293b !important; opacity: 0.6; cursor: not-allowed; }
 
-        /* 🛠️ QRの黄色点線枠が絶対に潰れないように「flex-shrink: 0」と固定サイズを死守 */
         .qr-target-box { 
-            width: 200px; height: 200px; 
+            width: 190px; height: 190px; 
             border: 4px dashed var(--accent); 
             border-radius: 16px; 
             background: transparent; 
@@ -97,7 +98,9 @@
             display: none;
             justify-content: center;
             align-items: center;
+            animation: pulse-border 1.5s infinite alternate;
         }
+        @keyframes pulse-border { 0% { transform: scale(0.98); border-color: var(--accent); } 100% { transform: scale(1.02); border-color: #ffffff; } }
 
         .sparkle { position: absolute; font-size: 40px; animation: burst 0.4s ease-out forwards; pointer-events: none; z-index: 20; text-shadow: 0 0 8px #ff5722; }
         @keyframes burst { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
@@ -109,20 +112,22 @@
 </head>
 <body>
 
+    <canvas id="camera-canvas"></canvas>
+    <canvas id="effect-canvas"></canvas>
     <video id="video" autoplay playsinline muted></video>
-    <canvas id="hidden-canvas"></canvas> 
+    <canvas id="hidden-canvas" style="display:none;"></canvas>
     <div id="flash"></div>
 
     <div id="startBoard" class="overlay">
         <div class="res-title">ターゲット接近！</div>
-        <div class="res-body" id="start-loc-info">玉村町エリアにモンスターが連続出現！<br><br><span style="color:#ef4444; font-size:18px; font-weight:bold;">⚠️30秒間の無限討伐作戦！</span><br>設置ボタンを素早く叩き、何匹倒せるか挑戦だ！</div>
-        <button class="action-btn" onclick="clickToStartGame()">バトル開始！</button>
+        <div class="res-body" id="start-loc-info">玉村町エリアにモンスターが連続出現！<br><br><span style="color:#ef4444; font-size:18px; font-weight:bold;">⚠️30秒間の位置連動AR防衛戦！</span><br>カメラの前に立ち、きみの光る架け橋でマグマを渡れ！</div>
+        <button class="action-btn" id="start-loading-btn" onclick="clickToStartGame()">バトル開始！</button>
     </div>
 
     <div class="main-wrapper" id="gameplay-ui">
         <div class="hud">
             <div class="hud-card">タイム: <span id="timer">30</span> 秒</div>
-            <div class="hud-card" id="loc-name">玉村町エリア</div>
+            <div class="hud-card" id="loc-name">北部公園バトル</div>
             <div class="hud-card">獲得: <span id="score">0</span> PT</div>
         </div>
 
@@ -148,9 +153,12 @@
 
     <div id="resBoard" class="overlay" style="display: none;">
         <div class="res-title" id="resTitle">⚔️ 作戦時間終了！ ⚔️</div>
+        
         <div id="qr-box-area" class="qr-target-box"></div>
+        
         <div class="res-body" id="resBody">結果</div>
-        <button class="action-btn" id="res-action-btn" onclick="back()">もう一度防衛戦に挑む</button>
+        
+        <button class="action-btn" id="res-action-btn" onclick="back()" disabled>もう一度防衛戦に挑む (3s)</button>
     </div>
 
     <script>
@@ -165,6 +173,14 @@
         let gameHasStarted = false; 
         let isScanningQR = false; 
         let monstersDefeated = 0; 
+        
+        let camCanvas, camCtx, effCanvas, effCtx, videoEl;
+        
+        // 🌋 TUG再現用追従AR変数
+        let bridgeX = 0.5; 
+        let targetBridgeX = 0.5;
+        let magmaOffset = 0;
+        let prevFrameData = null; 
 
         const monsterDic = [
             { emoji: '🦖', name: '古代竜タマムラサウルス' },
@@ -176,7 +192,7 @@
             { emoji: '💎', name: '輝くクリスタル・ゴーレム' },
             { emoji: '🦁', name: '戦獅子レオ・キング' },
             { emoji: '🦈', name: '利根川の暴れ人食いサメ' },
-            { emoji: '🦂', name: '毒針のデス・スコーピオン' },
+            { emoji: '蠍', name: '毒針のデス・スコーピオン' },
             { emoji: '🐻', name: '森 of キラー・ベアー' },
             { emoji: '🦅', name: '音速のサンダー・バード' },
             { emoji: '🦍', name: '怪力ゴリラ・コング' },
@@ -194,13 +210,154 @@
 
         window.onload = function() {
             try {
-                let savedName = sessionStorage.getItem('current_battle_name') || '玉村町エリア';
+                let savedName = sessionStorage.getItem('current_battle_name') || '北部公園バトル';
                 document.getElementById('loc-name').innerText = savedName;
-                
                 currentMonsterIndex = Math.floor(Math.random() * monsterDic.length);
                 setupMonster();
+                initCameraAndCanvas();
             } catch (e) {}
         };
+
+        function initCameraAndCanvas() {
+            camCanvas = document.getElementById('camera-canvas');
+            camCtx = camCanvas.getContext('2d');
+            effCanvas = document.getElementById('effect-canvas');
+            effCtx = effCanvas.getContext('2d');
+            videoEl = document.getElementById('video');
+
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 400, height: 300 }, audio: false })
+                    .then(stream => {
+                        videoEl.srcObject = stream;
+                        videoEl.play();
+                        setInterval(renderLoop, 33); 
+                    }).catch(() => {
+                        setInterval(renderLoop, 33);
+                    });
+            }
+        }
+
+        function renderLoop() {
+            if (camCanvas.width !== window.innerWidth) {
+                camCanvas.width = window.innerWidth; camCanvas.height = window.innerHeight;
+                effCanvas.width = window.innerWidth; effCanvas.height = window.innerHeight;
+            }
+
+            camCtx.save();
+            if (videoEl && videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+                camCtx.drawImage(videoEl, 0, 0, camCanvas.width, camCanvas.height);
+                // 🧠 人の位置を毎コマ検知
+                if (gameHasStarted && !isScanningQR) {
+                    trackHumanMotion();
+                }
+            } else {
+                camCtx.fillStyle = '#0f172a';
+                camCtx.fillRect(0, 0, camCanvas.width, camCanvas.height);
+            }
+            camCtx.restore();
+
+            effCtx.clearRect(0, 0, effCanvas.width, effCanvas.height);
+            if (gameHasStarted && !isScanningQR) {
+                bridgeX += (targetBridgeX - bridgeX) * 0.12; 
+                drawMagmaAndLightBridge(effCanvas.width, effCanvas.height);
+            }
+            
+            if (isScanningQR && videoEl && videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+                checkQRCode();
+            }
+        }
+
+        // 🧠 前後の映像の変化（人間）を捉えて重心のパーセンテージを測る超軽量AI
+        function trackHumanMotion() {
+            try {
+                let checkW = 80; let checkH = 60;
+                let hiddenCanvas = document.getElementById('hidden-canvas');
+                let hCtx = hiddenCanvas.getContext('2d');
+                hiddenCanvas.width = checkW; hiddenCanvas.height = checkH;
+                
+                hCtx.drawImage(videoEl, 0, 0, checkW, checkH);
+                let frameData = hCtx.getImageData(0, 0, checkW, checkH).data;
+                
+                if (prevFrameData) {
+                    let totalX = 0; let matchCount = 0;
+                    for (let i = 0; i < frameData.length; i += 4) {
+                        let diff = Math.abs(frameData[i] - prevFrameData[i]) + 
+                                   Math.abs(frameData[i+1] - prevFrameData[i+1]) + 
+                                   Math.abs(frameData[i+2] - prevFrameData[i+2]);
+                        if (diff > 90) { 
+                            let pixelIndex = i / 4;
+                            let x = pixelIndex % checkW;
+                            totalX += x;
+                            matchCount++;
+                        }
+                    }
+                    if (matchCount > 15) {
+                        let rawX = totalX / matchCount / checkW;
+                        targetBridgeX = 1 - rawX; // 反転ミラー処理
+                    }
+                }
+                prevFrameData = frameData;
+            } catch(e) {}
+        }
+
+        // 🌋 マグマとプラズマ光の橋
+        function drawMagmaAndLightBridge(w, h) {
+            let riverY = h * 0.70; 
+            let riverHeight = h * 0.14; 
+            
+            let magmaGrad = effCtx.createLinearGradient(0, riverY, 0, riverY + riverHeight);
+            magmaGrad.addColorStop(0, '#ff3300'); 
+            magmaGrad.addColorStop(0.4, '#ffaa00'); 
+            magmaGrad.addColorStop(1, '#660000'); 
+            effCtx.fillStyle = magmaGrad;
+            effCtx.fillRect(0, riverY, w, riverHeight);
+            
+            magmaOffset += 2.5;
+            effCtx.strokeStyle = 'rgba(255, 230, 0, 0.6)';
+            effCtx.lineWidth = 4;
+            effCtx.beginPath();
+            for (let x = 0; x < w; x += 15) {
+                let y = riverY + (riverHeight / 2) + Math.sin((x + magmaOffset) * 0.04) * 8;
+                if (x === 0) effCtx.moveTo(x, y); else effCtx.lineTo(x, y);
+            }
+            effCtx.stroke();
+
+            let bridgeWidth = w * 0.32;
+            if (bridgeWidth < 120) bridgeWidth = 120;
+            let bX = (bridgeX * w) - (bridgeWidth / 2);
+            
+            if (bX < 10) bX = 10;
+            if (bX + bridgeWidth > w - 10) bX = w - bridgeWidth - 10;
+
+            let bridgeGrad = effCtx.createLinearGradient(bX, 0, bX + bridgeWidth, 0);
+            bridgeGrad.addColorStop(0, 'rgba(0, 100, 255, 0.8)');
+            bridgeGrad.addColorStop(0.5, 'rgba(0, 230, 255, 0.95)'); 
+            bridgeGrad.addColorStop(1, 'rgba(0, 100, 255, 0.8)');
+            
+            effCtx.shadowColor = '#00ffff';
+            effCtx.shadowBlur = 20;
+            effCtx.fillStyle = bridgeGrad;
+            drawRoundRect(effCtx, bX, riverY - 10, bridgeWidth, riverHeight + 20, 6);
+            
+            effCtx.shadowColor = 'transparent'; effCtx.shadowBlur = 0;
+
+            effCtx.strokeStyle = '#ffffff';
+            effCtx.lineWidth = 3;
+            effCtx.strokeRect(bX, riverY - 10, bridgeWidth, riverHeight + 20);
+        }
+
+        function drawRoundRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath(); ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath(); ctx.fill();
+        }
 
         function setupMonster() {
             const currentMonster = monsterDic[currentMonsterIndex];
@@ -279,6 +436,10 @@
             const myBtn = document.getElementById(`btn-${l.toLowerCase()}`);
             if(myBtn) myBtn.classList.add('selected');
             
+            if (l === 'A') targetBridgeX = 0.2;
+            if (l === 'B') targetBridgeX = 0.5;
+            if (l === 'C') targetBridgeX = 0.8;
+            
             if(selected === target) {
                 isMessageLocked = false; 
                 const dBtn = document.getElementById('shoot-btn');
@@ -288,7 +449,7 @@
             } else {
                 isMessageLocked = true; 
                 const dBtn = document.getElementById('shoot-btn');
-                if(dBtn) dBtn.classList.remove('ready');
+                if(dBtn) dBtn.className = 'abc-btn';
                 document.getElementById('instruction').innerText = `ちがうよ！【 ${target} 】を押してね！`;
                 playTone(220, 'sawtooth', 0.1, 0.1); 
             }
@@ -356,73 +517,65 @@
             playTone(180, 'sawtooth', 0.15, 0.3);
         }
 
+        // ⚔️ スキャン最優先リザルト処理
         function end(success, msg) {
             clearInterval(timerInterval);
             if (bgmInterval) clearInterval(bgmInterval); 
+            isScanningQR = true; 
             
             document.getElementById('gameplay-ui').style.display = 'none';
             document.getElementById('resBoard').style.display = 'flex';
-            document.getElementById('qr-box-area').style.display = 'flex';
+            document.getElementById('qr-box-area').style.display = 'flex'; // 点線枠出現
             
             document.getElementById('resTitle').innerText = "⚔️ 作戦時間終了！ ⚔️";
             
-            // 🛠️ 文字を小さく、1行にまとめてスッキリ並べる調整
+            // 🚨 レベル2専用QRスキャンを最優先にするためのガイダンス変更
             document.getElementById('resBody').innerHTML = 
                 `<div style="font-size:18px; font-weight:bold; margin-bottom:8px;">` +
                 `<span style="color:#34d399; margin-right:15px;">🦖 撃破数: ${monstersDefeated} 匹</span>` +
                 `<span style="color:#facc15;">🏆 スコア: ${score} PT</span>` +
                 `</div>` +
-                `<div style="color:#a7f3d0; font-size:13px; font-weight:bold; margin-bottom:5px;">素晴らしい戦績です！冒険者カードを進化させよう！</div>` +
-                `<div style="color:#94a3b8; font-size:11px; line-height:1.3;">現地にある「レベル2専用QRコード」をスキャンするか、<br>下のボタンから再挑戦しよう！</div>`;
+                `<div style="color:#ffeb3b; font-size:14px; font-weight:bold; margin-bottom:5px; animation:shakeAnim 0.5s infinite;">👉 【最優先】レベル2専用QRコードをスキャンしてください</div>` +
+                `<div style="color:#cbd5e1; font-size:11px; line-height:1.3;">カードを黄色い点線枠にかざすと次のステージへ進めます。<br>（再挑戦ボタンは誤操作防止のため一時ロック中）</div>`;
             
-            document.getElementById('res-action-btn').innerText = "もう一度防衛戦に挑む";
+            // 🛡️ 3秒間のボタン誤押しロックタイマー始動
+            let lockSeconds = 3;
+            const rBtn = document.getElementById('res-action-btn');
+            rBtn.setAttribute('disabled', 'true');
+            rBtn.innerText = `もう一度防衛戦に挑む (${lockSeconds}s)`;
+            
+            let lockInterval = setInterval(() => {
+                lockSeconds--;
+                if (lockSeconds <= 0) {
+                    clearInterval(lockInterval);
+                    rBtn.removeAttribute('disabled');
+                    rBtn.innerText = "もう一度防衛戦に挑む";
+                } else {
+                    rBtn.innerText = `もう一度防衛戦に挑む (${lockSeconds}s)`;
+                }
+            }, 1000);
 
             let total = parseInt(localStorage.getItem('tamamura_points_demo') || '0');
             localStorage.setItem('tamamura_points_demo', total + score);
-
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
-                    .then(stream => { 
-                        const videoEl = document.getElementById('video');
-                        videoEl.srcObject = stream;
-                        videoEl.style.display = 'block';
-                        isScanningQR = true;
-                        requestAnimationFrame(scanQRCodeLoop);
-                    }).catch(() => {});
-            }
         }
 
-        function scanQRCodeLoop() {
-            if (!isScanningQR) return;
-            const video = document.getElementById('video');
+        function checkQRCode() {
             const canvas = document.getElementById('hidden-canvas');
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                const ctx = canvas.getContext('2d');
-                canvas.width = 300; canvas.height = 300;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-                if (code) {
-                    isScanningQR = false; 
-                    playTone(523.25, 'sine', 0.1, 0.3);
-                    try {
-                        video.srcObject.getTracks().forEach(t => t.stop());
-                    } catch(e){}
-                    setTimeout(() => { window.location.href = code.data; }, 200);
-                    return;
-                }
+            const ctx = canvas.getContext('2d');
+            canvas.width = 300; canvas.height = 300;
+            ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+
+            if (code) {
+                isScanningQR = false; 
+                playTone(523.25, 'sine', 0.1, 0.3);
+                setTimeout(() => { window.location.href = code.data; }, 200);
             }
-            requestAnimationFrame(scanQRCodeLoop);
         }
 
         function back() { 
             isScanningQR = false;
-            try {
-                const video = document.getElementById('video');
-                if (video && video.srcObject) {
-                    video.srcObject.getTracks().forEach(t => t.stop());
-                }
-            } catch(e){}
             window.location.reload(); 
         }
 
@@ -449,7 +602,6 @@
                 if (!gameHasStarted) return;
                 if (track1[index] > 0) playTone(track1[index], 'square', 0.08, 0.02);
                 index = (index + 1) % track1.length;
-                updateInstructionText();
             }, 125); 
         }
 
