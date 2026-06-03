@@ -84,7 +84,6 @@
             flex-shrink: 0; transition: all 0.2s;
         }
         .action-btn:active { transform: translateY(2px); box-shadow: 0 2px #059669; }
-        /* ロック中ボタンの見た目 */
         .action-btn:disabled { background: #475569 !important; box-shadow: 0 4px #1e293b !important; opacity: 0.6; cursor: not-allowed; }
 
         .qr-target-box { 
@@ -175,8 +174,9 @@
         let monstersDefeated = 0; 
         
         let camCanvas, camCtx, effCanvas, effCtx, videoEl;
+        let currentStream = null; // カメラのストリーム管理用
         
-        // 🌋 TUG再現用追従AR変数
+        // 🌋 TUG再現システム用
         let bridgeX = 0.5; 
         let targetBridgeX = 0.5;
         let magmaOffset = 0;
@@ -214,25 +214,39 @@
                 document.getElementById('loc-name').innerText = savedName;
                 currentMonsterIndex = Math.floor(Math.random() * monsterDic.length);
                 setupMonster();
-                initCameraAndCanvas();
+                
+                // 🚀 最初はインカメラ（フロント）で起動
+                startCamera("user");
+                
+                // ⏱️ 描画ループ起動
+                camCanvas = document.getElementById('camera-canvas');
+                camCtx = camCanvas.getContext('2d');
+                effCanvas = document.getElementById('effect-canvas');
+                effCtx = effCanvas.getContext('2d');
+                setInterval(renderLoop, 33);
             } catch (e) {}
         };
 
-        function initCameraAndCanvas() {
-            camCanvas = document.getElementById('camera-canvas');
-            camCtx = camCanvas.getContext('2d');
-            effCanvas = document.getElementById('effect-canvas');
-            effCtx = effCanvas.getContext('2d');
+        // 📷 イン／アウトカメラの安全な切り替え起動システム
+        function startCamera(facingModeValue) {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop()); // 古いカメラを一度完全停止
+            }
             videoEl = document.getElementById('video');
+            
+            let constraints = {
+                video: { facingMode: facingModeValue, width: 400, height: 300 },
+                audio: false
+            };
 
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 400, height: 300 }, audio: false })
+                navigator.mediaDevices.getUserMedia(constraints)
                     .then(stream => {
+                        currentStream = stream;
                         videoEl.srcObject = stream;
                         videoEl.play();
-                        setInterval(renderLoop, 33); 
-                    }).catch(() => {
-                        setInterval(renderLoop, 33);
+                    }).catch(err => {
+                        console.log("カメラ切り替えエラー保護:", err);
                     });
             }
         }
@@ -246,7 +260,7 @@
             camCtx.save();
             if (videoEl && videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
                 camCtx.drawImage(videoEl, 0, 0, camCanvas.width, camCanvas.height);
-                // 🧠 人の位置を毎コマ検知
+                // 🧠 インカメラ時（ゲーム中）のみ動体重心検知を行う
                 if (gameHasStarted && !isScanningQR) {
                     trackHumanMotion();
                 }
@@ -267,7 +281,6 @@
             }
         }
 
-        // 🧠 前後の映像の変化（人間）を捉えて重心のパーセンテージを測る超軽量AI
         function trackHumanMotion() {
             try {
                 let checkW = 80; let checkH = 60;
@@ -300,7 +313,6 @@
             } catch(e) {}
         }
 
-        // 🌋 マグマとプラズマ光の橋
         function drawMagmaAndLightBridge(w, h) {
             let riverY = h * 0.70; 
             let riverHeight = h * 0.14; 
@@ -517,28 +529,30 @@
             playTone(180, 'sawtooth', 0.15, 0.3);
         }
 
-        // ⚔️ スキャン最優先リザルト処理
+        // ⚔️ スキャン最優先 ＆ 背面カメラへの自動切り替え
         function end(success, msg) {
             clearInterval(timerInterval);
             if (bgmInterval) clearInterval(bgmInterval); 
             isScanningQR = true; 
             
+            // 🔄 【大改善】リザルト画面突入と同時に、カメラを「背面（environment）」に自動切り替え！
+            startCamera("environment");
+            
             document.getElementById('gameplay-ui').style.display = 'none';
             document.getElementById('resBoard').style.display = 'flex';
-            document.getElementById('qr-box-area').style.display = 'flex'; // 点線枠出現
+            document.getElementById('qr-box-area').style.display = 'flex'; 
             
             document.getElementById('resTitle').innerText = "⚔️ 作戦時間終了！ ⚔️";
             
-            // 🚨 レベル2専用QRスキャンを最優先にするためのガイダンス変更
             document.getElementById('resBody').innerHTML = 
                 `<div style="font-size:18px; font-weight:bold; margin-bottom:8px;">` +
                 `<span style="color:#34d399; margin-right:15px;">🦖 撃破数: ${monstersDefeated} 匹</span>` +
                 `<span style="color:#facc15;">🏆 スコア: ${score} PT</span>` +
                 `</div>` +
-                `<div style="color:#ffeb3b; font-size:14px; font-weight:bold; margin-bottom:5px; animation:shakeAnim 0.5s infinite;">👉 【最優先】レベル2専用QRコードをスキャンしてください</div>` +
-                `<div style="color:#cbd5e1; font-size:11px; line-height:1.3;">カードを黄色い点線枠にかざすと次のステージへ進めます。<br>（再挑戦ボタンは誤操作防止のため一時ロック中）</div>`;
+                `<div style="color:#ffeb3b; font-size:14px; font-weight:bold; margin-bottom:5px; animation:shakeAnim 0.5s infinite;">📸 【背面カメラに切り替わりました】レベル2専用QRコードをスキャン</div>` +
+                `<div style="color:#cbd5e1; font-size:11px; line-height:1.3;">カードや看板のQRコードを黄色い点線枠にかざしてください。<br>（下の再挑戦ボタンは誤操作防止のため一時ロック中）</div>`;
             
-            // 🛡️ 3秒間のボタン誤押しロックタイマー始動
+            // 🛡️ 3秒間のボタン誤押しロックタイマー
             let lockSeconds = 3;
             const rBtn = document.getElementById('res-action-btn');
             rBtn.setAttribute('disabled', 'true');
